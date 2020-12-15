@@ -1,152 +1,74 @@
 #include "LoRaCon.hpp"
 
-LoRaCon::LoRaCon(DeviceIdentity *device)
-    : device(device)
+LoRaCon::LoRaCon(DeviceIdentity *ownDevice, functionPointer callback)
+    : ownDevice(ownDevice), callback(callback), timer(sendMsgTime, sendMsgTime, true, true), sendNext(nullptr)
 {
 }
 
-void LoRaCon::addKnownDevice(DeviceIdentity *device)
+void LoRaCon::addNewConnection(DeviceIdentity *receivingDevice)
 {
-    knownDevices.addLast(new KnownDevice(device));
-}
-
-void LoRaCon::printKnownDevices()
-{
-    const LinkedListItem<KnownDevice> *tempItem = knownDevices.getFirst();
-    while (tempItem)
+    connections.addLast(new Connection(ownDevice, receivingDevice));
+    if (sendNext == nullptr)
     {
-        Serial.println(tempItem->item->device->id);
-        tempItem = tempItem->next;
+        sendNext = connections.getFirst();
     }
 }
 
-bool LoRaCon::sendData(uint8_t receiverId, char *data)
+void LoRaCon::printConnections()
+{
+    const LinkedListItem<Connection> *tempItem = connections.getFirst();
+    Serial.println("Connections: ");
+    while (tempItem)
+    {
+        Serial.print("Device Id: ");
+        Serial.println(tempItem->item->getDeviceIdentity()->id);
+        tempItem = tempItem->next;
+    }
+    Serial.println();
+}
+
+bool LoRaCon::sendDAT(uint8_t receiverId, char *data)
 {
     // Find receiver
-    KnownDevice *receiverDevice = findKnownDevice(receiverId);
+    Connection *receiverDevice = findConnection(receiverId);
     if (!receiverDevice)
     {
         Serial.println("Receiver not found!");
+        Serial.println();
         return false;
     }
 
-    // Create payload
-    size_t dataSize = strlen(data);
-    size_t payloadSize = dataSize + 3;
-    uint8_t blocks = (((uint8_t)(payloadSize - 1)) / AES_BLOCKSIZE) + 1;
-    size_t paddedPayloadSize = blocks * AES_BLOCKSIZE;
-
-    byte payload[paddedPayloadSize];
-
-    payload[0] = receiverDevice->lastSendMsgId + 1; // Message Id
-    receiverDevice->lastSendMsgId++;
-    payload[1] = MsgType_DATA; // Message type
-    payload[2] = strlen(data); // Message length
-    memcpy(payload + 3, data, dataSize);
-
-    // Hash payload
-    byte payloadHash[HASH_SIZE];
-    calcSHA256(payloadHash, payload, payloadSize);
-
-    // Encrypt payload
-    byte encryptedPayload[paddedPayloadSize];
-    encryptAES128(device->key, payload, encryptedPayload, paddedPayloadSize);
-
-    // Create message
-
-    Serial.print("MEssage Size: ");
-    Serial.println(2 + sizeof(payloadHash) + sizeof(encryptedPayload));
-
-    byte *packet = new byte[2 + sizeof(payloadHash) + sizeof(encryptedPayload)];
-    packet[0] = receiverDevice->device->id;
-    packet[1] = device->id;
-    memcpy(packet + 2, payloadHash, sizeof(payloadHash));
-    memcpy(packet + 2 + sizeof(payloadHash), encryptedPayload, sizeof(encryptedPayload));
-
-    Message *message = new Message(receiverDevice, receiverDevice->lastSendMsgId, packet, 2 + sizeof(payloadHash) + sizeof(encryptedPayload));
-    pendingMessages.addLast(message);
-    message->sendViaLoRa();
+    return receiverDevice->addToAckMQ(data);
 }
 
-void LoRaCon::printPendingMessage()
+bool LoRaCon::sendFAF(uint8_t receiverId, char *data)
 {
-    const LinkedListItem<Message> *tempItem = pendingMessages.getFirst();
-    while (tempItem)
+    // Find receiver
+    Connection *receiverDevice = findConnection(receiverId);
+    if (!receiverDevice)
     {
-        Serial.printf("Pending Message: Id Sender:%d, Id Receiver:%d, Message Id:%d ", device->id, tempItem->item->receiver->device->id, tempItem->item->messageId);
+        Serial.println("Receiver not found!");
         Serial.println();
-        tempItem = tempItem->next;
+        return false;
     }
+
+    return receiverDevice->addToFaFMQ(data);
 }
 
-void LoRaCon::receiving()
+void LoRaCon::update()
 {
-    int packetSize = LoRa.parsePacket();
-
-    if (packetSize)
+    if (timer.checkTimer())
     {
-
-        byte packet[packetSize];
-
-        for (int i = 0; i < packetSize; i++)
-        {
-            packet[i] = (byte)LoRa.read();
-        }
-
-        uint8_t receiverId = packet[0];
-        uint8_t senderId = packet[1];
-
-        if (receiverId != device->id)
-        {
-            return;
-        }
-
-        // Find sender
-        KnownDevice *senderDevice = findKnownDevice(senderId);
-        if (!senderDevice)
-        {
-            Serial.println("Sender not found!");
-            return;
-        }
-
-        byte payloadHash[HASH_SIZE];
-        memcpy(payloadHash, packet + 2, 32);
-
-        byte encryptedPayload[packetSize - 34];
-        memcpy(encryptedPayload, packet + 2 + 32, packetSize - 34);
-
-        byte decryptedPayload[packetSize - 34];
-        decryptAES128(senderDevice->device->key, encryptedPayload, decryptedPayload, packetSize - 34);
-
-        byte payloadHashCalc[HASH_SIZE];
-        calcSHA256(payloadHashCalc, decryptedPayload, sizeof(decryptedPayload));
-
-        if (memcmp(payloadHash, payloadHashCalc, HASH_SIZE))
-        {
-            Serial.println("Match");
-        }
-        else
-        {
-            Serial.println("No Match");
-        }
-
-        uint8_t messageId = decryptedPayload[0];
-        uint8_t messageType = decryptedPayload[1];
-        uint8_t messageLength = decryptedPayload[2];
-        char theMessage[messageLength + 1];
-        memcpy(theMessage, decryptedPayload + 3, messageLength);
-        theMessage[messageLength] = '\0';
-
-        //Serial.print("Message: ");
-        Serial.println(theMessage);
+        sendNextMessage();
     }
+    receiveMessage();
 }
 
-KnownDevice *LoRaCon::findKnownDevice(uint8_t id)
+Connection *LoRaCon::findConnection(uint8_t deviceId)
 {
-    const LinkedListItem<KnownDevice> *tempItem = knownDevices.getFirst();
+    const LinkedListItem<Connection> *tempItem = connections.getFirst();
 
-    while (tempItem && tempItem->item->device->id != id)
+    while (tempItem && tempItem->item->getDeviceIdentity()->id != deviceId)
     {
         tempItem = tempItem->next;
     }
@@ -159,40 +81,71 @@ KnownDevice *LoRaCon::findKnownDevice(uint8_t id)
     return nullptr;
 }
 
-void LoRaCon::calcSHA256(byte *hash, byte *data, size_t size)
+void LoRaCon::sendNextMessage()
 {
-    //Serial.print("Calc SHA256 (");
-    sha256.reset();
-    sha256.update(data, size);
-    sha256.finalize(hash, HASH_SIZE);
+    const LinkedListItem<Connection> *startItem = sendNext;
+    bool msgSended = false;
 
-    for (int i = 0; i < HASH_SIZE; i++)
+    if (sendNext != nullptr)
     {
-        //Serial.printf("%02X ", hash[i]);
+        do
+        {
+            if (sendNext->item->getLengthMessageQueue_FaF() > 0)
+            {
+                sendNext->item->sendFromFaFMQ();
+                msgSended = true;
+            }
+            else if (sendNext->item->getLengthMessageQueue_Ack() > 0)
+            {
+                sendNext->item->sendFromAckMQ();
+                msgSended = true;
+            }
+
+            if (sendNext->next == nullptr)
+            {
+                sendNext = connections.getFirst();
+            }
+            else
+            {
+                sendNext = sendNext->next;
+            }
+        } while (sendNext != startItem && !msgSended);
     }
-    //Serial.println(")");
 }
 
-void LoRaCon::encryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t size)
+void LoRaCon::receiveMessage()
 {
-    //Serial.println("Encrypt AES128");
-    uint8_t blocks = size / aes128.keySize();
-    crypto_feed_watchdog();
-    aes128.setKey(key, aes128.keySize());
-    for (int i = 0; i < blocks; i++)
-    {
-        aes128.encryptBlock(dataOut + i * aes128.keySize(), dataIn + +i * aes128.keySize());
-    }
-}
+    int packetSize = LoRa.parsePacket();
 
-void LoRaCon::decryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t size)
-{
-    //Serial.println("Decrypt AES128");
-    uint8_t blocks = size / aes128.keySize();
-    crypto_feed_watchdog();
-    aes128.setKey(key, aes128.keySize());
-    for (int i = 0; i < blocks; i++)
+    if (packetSize)
     {
-        aes128.decryptBlock(dataOut + i * aes128.keySize(), dataIn + +i * aes128.keySize());
+        // Receive Packet
+        byte packet[packetSize];
+        for (int i = 0; i < packetSize; i++)
+        {
+            packet[i] = (byte)LoRa.read();
+        }
+
+        // Get Sender and Receiver Id
+        uint8_t receiverId = packet[0];
+        uint8_t senderId = packet[1];
+
+        if (receiverId != ownDevice->id)
+        {
+            Serial.println("Message not for me!");
+            Serial.println();
+            return;
+        }
+
+        // Find sender
+        Connection *senderDevice = findConnection(senderId);
+        if (!senderDevice)
+        {
+            Serial.println("Sender unknown!");
+            Serial.println();
+            return;
+        }
+
+        senderDevice->receivePacket(packet, packetSize, callback);
     }
 }

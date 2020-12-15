@@ -4,7 +4,6 @@
 #include <LoRa.h>
 #include <U8g2lib.h>
 #include <DHT.h>
-#include "Timer.hpp"
 #include "LoRaCon.hpp"
 /* #endregion */
 
@@ -26,6 +25,8 @@
 #define DHT_PIN 13
 #define DHT_TYPE DHT22
 /* #endregion */
+
+void msgReceived(DeviceIdentity *from, char *msg);
 
 LoRaCon *loraCon;
 
@@ -56,7 +57,6 @@ void setup()
   Serial.begin(115200);
   while (!Serial)
     ;
-  Serial.println("");
 
   // Setup LoRa
   SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
@@ -68,22 +68,35 @@ void setup()
     while (1)
       ;
   }
+
+  Serial.println();
+  Serial.println();
   /* #endregion */
 
-  //loraCon = new LoRaCon(&gatewayDevice);
+  // loraCon = new LoRaCon(&sensorDevice1, &msgReceived);
+  // loraCon->addNewConnection(&gatewayDevice);
+  // loraCon->printConnections();
 
-  //loraCon->addKnownDevice(&sensorDevice1);
-  //loraCon->addKnownDevice(&sensorDevice2);
+  // loraCon->sendDAT(100, "This is a DAT message");
+  // loraCon->sendFAF(100, "This is a FAF message");
 
-  //loraCon->sendData(10, "N:ONLINE");
-  //loraCon->sendData(11, "N:ONLINE");
+  loraCon = new LoRaCon(&gatewayDevice, &msgReceived);
+  loraCon->addNewConnection(&sensorDevice1);
+  loraCon->printConnections();
 
-  loraCon = new LoRaCon(&sensorDevice1);
-  loraCon->addKnownDevice(&gatewayDevice);
-  loraCon->sendData(100, "S:1:20:DOUBLE:20.3|S:2:20:DOUBLE:55.3");
+  //loraCon->sendData(100, "S:1:20:DOUBLE:20.3|S:2:20:DOUBLE:55.3");
 }
 
 void loop()
 {
-  loraCon->receiving();
+  loraCon->update();
+}
+
+void msgReceived(DeviceIdentity *from, char *msg)
+{
+  Serial.print("Received From: ");
+  Serial.print(from->id);
+  Serial.print(" | MSG: ");
+  Serial.println(msg);
+  Serial.println();
 }
