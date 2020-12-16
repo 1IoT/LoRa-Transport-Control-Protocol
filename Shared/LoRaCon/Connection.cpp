@@ -98,6 +98,7 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
     case MsgType_DAT_ACK:
         Serial.printf("ACK msgId: %d received", msgId);
         Serial.println();
+        Serial.println();
         if (messageQueue_Ack.getLast()->item->getMsgId() == msgId)
         {
             messageQueue_Ack.deleteLast();

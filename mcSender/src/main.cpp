@@ -26,6 +26,25 @@
 #define DHT_TYPE DHT22
 /* #endregion */
 
+/* #region Forward Declarations */
+void readDHT();
+void sendReading();
+void drawScreen();
+/* #endregion */
+
+U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, OLED_SCL, OLED_SDA, OLED_RST);
+
+DHT dht(DHT_PIN, DHT_TYPE);
+
+bool dhtActive = false;
+float temp = 0;
+float hum = 0;
+bool displaySend = false;
+
+MyTimer *dhtReadTimer;
+MyTimer *sendLoRaTimer;
+MyTimer *displaySendTimer;
+
 void msgReceived(DeviceIdentity *from, char *msg);
 
 LoRaCon *loraCon;
@@ -77,12 +96,40 @@ void setup()
   loraCon->addNewConnection(&gatewayDevice);
   loraCon->printConnections();
 
-  loraCon->sendDAT(100, "This is a DAT message");
-  loraCon->sendFAF(100, "This is a FAF message");
+  // Setup Display
+  u8g2.begin();
+
+  // Setup DHT
+  dht.begin();
+
+  // Read DHT every 2 seconds
+  dhtReadTimer = new MyTimer(5000, 5000, true, true);
+
+  // Send LoRa
+  sendLoRaTimer = new MyTimer(20000, 15000, true, true);
+
+  // Display send only 5 seconds
+  displaySendTimer = new MyTimer(5000, 0, false, false);
 }
 
 void loop()
 {
+  if (dhtReadTimer->checkTimer())
+  {
+    readDHT();
+  }
+
+  if (sendLoRaTimer->checkTimer())
+  {
+    sendReading();
+  }
+
+  if (displaySendTimer->checkTimer())
+  {
+    displaySend = false;
+    drawScreen();
+  }
+
   loraCon->update();
 }
 
@@ -93,4 +140,97 @@ void msgReceived(DeviceIdentity *from, char *msg)
   Serial.print(" | MSG: ");
   Serial.println(msg);
   Serial.println();
+}
+
+void readDHT()
+{
+  float t = dht.readTemperature();
+  float h = dht.readHumidity();
+
+  if (isnan(t) || isnan(h))
+  {
+    dhtActive = false;
+    //Serial.println("DHT not connected!");
+  }
+  else
+  {
+    dhtActive = true;
+    temp = t;
+    hum = h;
+    //Serial.print("Read from DHT. (Temp: ");
+    //Serial.print(t);
+    //Serial.print("°C Hum: ");
+    //Serial.print(h);
+    //Serial.println("%)");
+  }
+
+  drawScreen();
+}
+
+void sendReading()
+{
+  displaySend = true;
+  displaySendTimer->startTimer();
+  drawScreen();
+
+  char msgBuffer[64];
+
+  if (dhtActive)
+  {
+
+    char tempBuff[8];
+    char humBuff[8];
+
+    dtostrf(temp, 4, 2, tempBuff);
+    dtostrf(hum, 4, 2, humBuff);
+
+    sprintf(msgBuffer, "S:1:20:DOUBLE:%s|S:2:20:DOUBLE:%s", humBuff, tempBuff);
+  }
+  else
+  {
+    sprintf(msgBuffer, "N:LOG:1:ERROR:DHT sensor not present!");
+  }
+
+  loraCon->sendDAT(100, msgBuffer);
+}
+
+void drawScreen()
+{
+  u8g2.clearBuffer();
+
+  u8g2.setFont(u8g2_font_helvB12_tf);
+  u8g2.drawFrame(0, 0, 128, 64);
+
+  char buffer[16];
+
+  if (dhtActive)
+  {
+    dtostrf(temp, 4, 2, buffer);
+  }
+  else
+  {
+    sprintf(buffer, "%s", "NA");
+  }
+  sprintf(buffer + strlen(buffer), "%cC", (char)176);
+  u8g2.drawStr(4, 16, "Temp: ");
+  u8g2.drawStr(56, 16, buffer);
+
+  if (dhtActive)
+  {
+    dtostrf(hum, 4, 2, buffer);
+  }
+  else
+  {
+    sprintf(buffer, "%s", "NA");
+  }
+  sprintf(buffer + strlen(buffer), "%s", "%");
+  u8g2.drawStr(4, 32, "Hum: ");
+  u8g2.drawStr(56, 32, buffer);
+
+  if (displaySend)
+  {
+    u8g2.drawStr(4, 48, "LoRa send");
+  }
+
+  u8g2.sendBuffer();
 }
