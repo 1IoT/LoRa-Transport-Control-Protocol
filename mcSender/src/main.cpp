@@ -73,18 +73,12 @@ void setup()
   Serial.println();
   /* #endregion */
 
-  // loraCon = new LoRaCon(&sensorDevice1, &msgReceived);
-  // loraCon->addNewConnection(&gatewayDevice);
-  // loraCon->printConnections();
-
-  // loraCon->sendDAT(100, "This is a DAT message");
-  // loraCon->sendFAF(100, "This is a FAF message");
-
-  loraCon = new LoRaCon(&gatewayDevice, &msgReceived);
-  loraCon->addNewConnection(&sensorDevice1);
+  loraCon = new LoRaCon(&sensorDevice1, &msgReceived);
+  loraCon->addNewConnection(&gatewayDevice);
   loraCon->printConnections();
 
-  //loraCon->sendData(100, "S:1:20:DOUBLE:20.3|S:2:20:DOUBLE:55.3");
+  loraCon->sendDAT(100, "This is a DAT message");
+  loraCon->sendFAF(100, "This is a FAF message");
 }
 
 void loop()

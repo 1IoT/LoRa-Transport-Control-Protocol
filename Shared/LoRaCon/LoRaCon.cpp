@@ -110,6 +110,11 @@ void LoRaCon::sendNextMessage()
                 sendNext = sendNext->next;
             }
         } while (sendNext != startItem && !msgSended);
+
+        if (!msgSended)
+        {
+            timer.startTimer(sendMsgTime, sendMsgTime - 100, true);
+        }
     }
 }
 
