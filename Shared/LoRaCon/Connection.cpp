@@ -87,18 +87,18 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
     switch (msgType)
     {
     case MsgType_DAT:
+        Serial.printf("Received DAT message from: %d | msgId: %d | Data: \"%s\"\n\n", receivingDevice->id, msgId, data);
         acknowledgeMessage(msgId);
         callback(receivingDevice, data);
         break;
 
     case MsgType_FAF:
+        Serial.printf("Received FAF message from: %d | msgId: %d | Data: \"%s\"\n\n", receivingDevice->id, msgId, data);
         callback(receivingDevice, data);
         break;
 
     case MsgType_DAT_ACK:
-        Serial.printf("ACK msgId: %d received", msgId);
-        Serial.println();
-        Serial.println();
+        Serial.printf("Received DAT_ACK message from: %d | for msgId: %d\n\n", receivingDevice->id, msgId);
         if (messageQueue_Ack.getLast()->item->getMsgId() == msgId)
         {
             messageQueue_Ack.deleteLast();
@@ -147,24 +147,40 @@ void Connection::sendPacket(Message *msg)
     LoRa.write((uint8_t *)packet, sizeof(packet));
     LoRa.endPacket();
 
-    Serial.println("Message Send:");
-    Serial.print("Sender: ");
-    Serial.print(ownDevice->id);
-    Serial.print(" | Receiver: ");
-    Serial.println(receivingDevice->id);
-    Serial.print("PayloadSize: ");
-    Serial.print(payloadSize);
-    Serial.print(" | PaddedPayloadSize: ");
-    Serial.println(paddedPayloadSize);
-    Serial.print("PacketSize: ");
-    Serial.print(sizeof(packet));
-    Serial.print(" | Packet: ");
-    for (int i = 0; i < sizeof(packet); i++)
+    switch (msg->getMsgType())
     {
-        Serial.printf("%02X ", packet[i]);
+    case MsgType_DAT:
+        Serial.printf("Send DAT message to: %d | msgId: %d | Data: \"%s\"\n\n", receivingDevice->id, msg->getMsgId(), msg->getMsg());
+        break;
+    case MsgType_FAF:
+        Serial.printf("Send FAF message to: %d | msgId: %d | Data: \"%s\"\n\n", receivingDevice->id, msg->getMsgId(), msg->getMsg());
+        break;
+    case MsgType_DAT_ACK:
+        Serial.printf("Send DAT_ACK message to: %d | for msgId: %d\n\n", receivingDevice->id, msg->getMsgId());
+        break;
+
+    default:
+        break;
     }
-    Serial.println();
-    Serial.println();
+
+    // Serial.println("Message Send:");
+    // Serial.print("Sender: ");
+    // Serial.print(ownDevice->id);
+    // Serial.print(" | Receiver: ");
+    // Serial.println(receivingDevice->id);
+    // Serial.print("PayloadSize: ");
+    // Serial.print(payloadSize);
+    // Serial.print(" | PaddedPayloadSize: ");
+    // Serial.println(paddedPayloadSize);
+    // Serial.print("PacketSize: ");
+    // Serial.print(sizeof(packet));
+    // Serial.print(" | Packet: ");
+    // for (int i = 0; i < sizeof(packet); i++)
+    // {
+    //     Serial.printf("%02X ", packet[i]);
+    // }
+    // Serial.println();
+    // Serial.println();
 }
 
 void Connection::acknowledgeMessage(uint8_t msgId)

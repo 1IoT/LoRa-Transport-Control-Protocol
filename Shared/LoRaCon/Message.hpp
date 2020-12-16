@@ -4,8 +4,8 @@
 enum MsgType
 {
     MsgType_SESSION_NEW,
-    MsgType_SESSION_ID,
-    MsgType_SESSION_ID_ACK,
+    MsgType_SESSION_KEY,
+    MsgType_SESSION_KEY_ACK,
     MsgType_FAF,
     MsgType_DAT,
     MsgType_DAT_ACK

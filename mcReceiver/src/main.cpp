@@ -69,13 +69,14 @@ void setup()
       ;
   }
 
-  Serial.println();
-  Serial.println();
+  Serial.println("\n\n\n\n\n\n\n\n\n\n");
   /* #endregion */
 
   loraCon = new LoRaCon(&gatewayDevice, &msgReceived);
   loraCon->addNewConnection(&sensorDevice1);
   loraCon->printConnections();
+
+  loraCon->sendFAF(10, "N:LOG:1:INFO: Gateway device online!");
 }
 
 void loop()
@@ -85,9 +86,5 @@ void loop()
 
 void msgReceived(DeviceIdentity *from, char *msg)
 {
-  Serial.print("Received From: ");
-  Serial.print(from->id);
-  Serial.print(" | MSG: ");
-  Serial.println(msg);
-  Serial.println();
+  // TODO: Handle received message
 }

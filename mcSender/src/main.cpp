@@ -88,28 +88,25 @@ void setup()
       ;
   }
 
-  Serial.println();
-  Serial.println();
+  // Setup Display
+  u8g2.begin();
+  // Setup DHT
+  dht.begin();
+  // Read DHT every 2 seconds
+  dhtReadTimer = new MyTimer(5000, 5000, true, true);
+  // Send LoRa
+  sendLoRaTimer = new MyTimer(20000, 0, true, true);
+  // Display send only 5 seconds
+  displaySendTimer = new MyTimer(5000, 0, false, false);
+
+  Serial.println("\n\n\n\n\n\n\n\n\n\n");
   /* #endregion */
 
   loraCon = new LoRaCon(&sensorDevice1, &msgReceived);
   loraCon->addNewConnection(&gatewayDevice);
   loraCon->printConnections();
 
-  // Setup Display
-  u8g2.begin();
-
-  // Setup DHT
-  dht.begin();
-
-  // Read DHT every 2 seconds
-  dhtReadTimer = new MyTimer(5000, 5000, true, true);
-
-  // Send LoRa
-  sendLoRaTimer = new MyTimer(20000, 15000, true, true);
-
-  // Display send only 5 seconds
-  displaySendTimer = new MyTimer(5000, 0, false, false);
+  loraCon->sendFAF(100, "N:LOG:1:INFO: Sender device online!");
 }
 
 void loop()
@@ -135,11 +132,7 @@ void loop()
 
 void msgReceived(DeviceIdentity *from, char *msg)
 {
-  Serial.print("Received From: ");
-  Serial.print(from->id);
-  Serial.print(" | MSG: ");
-  Serial.println(msg);
-  Serial.println();
+  // TODO: Handle received message
 }
 
 void readDHT()
