@@ -19,6 +19,7 @@ public:
         newLinkedListItem->item = item;
         newLinkedListItem->next = firstItem;
         newLinkedListItem->before = nullptr;
+        length++;
 
         if (firstItem)
         {
@@ -51,6 +52,7 @@ public:
 
             delete tempLinkedListItem->item;
             delete tempLinkedListItem;
+            length--;
         }
     }
 
@@ -60,6 +62,7 @@ public:
         newLinkedListItem->item = item;
         newLinkedListItem->next = nullptr;
         newLinkedListItem->before = lastItem;
+        length++;
 
         if (lastItem)
         {
@@ -92,6 +95,7 @@ public:
 
             delete tempLinkedListItem->item;
             delete tempLinkedListItem;
+            length--;
         }
     }
 
@@ -105,7 +109,14 @@ public:
         return lastItem;
     }
 
+    int getLength()
+    {
+        return length;
+    }
+
 private:
     LinkedListItem<T> *firstItem = nullptr;
     LinkedListItem<T> *lastItem = nullptr;
+
+    int length = 0;
 };
