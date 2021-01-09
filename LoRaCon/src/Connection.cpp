@@ -1,7 +1,36 @@
 #include "Connection.hpp"
 
 Connection::Connection(DeviceIdentity *ownDevice, DeviceIdentity *receivingDevice)
-    : ownDevice(ownDevice), receivingDevice(receivingDevice){};
+    : ownDevice(ownDevice), receivingDevice(receivingDevice)
+{
+    randomSeed(analogRead(0));
+}
+
+void Connection::checkSession()
+{
+    switch (connectionStatus)
+    {
+    case ConnectionStatus::NotConnected:
+    {
+        Message *message = new Message(MsgType_SESSION_NEW, 0, 0, nullptr);
+        messageQueue_FaF.addFirst(message);
+
+        connectionStatus = ConnectionStatus::SessionRequestSended;
+    }
+    break;
+    case ConnectionStatus::SessionRequestSended:
+    {
+        Message *message = new Message(MsgType_SESSION_NEW, 0, 0, nullptr);
+        messageQueue_FaF.addFirst(message);
+
+        connectionStatus = ConnectionStatus::SessionRequestSended;
+    }
+    break;
+    case ConnectionStatus::Connected:
+
+        break;
+    }
+}
 
 bool Connection::addToAckMQ(char *data)
 {
@@ -53,10 +82,16 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
 
     // Calculate Hash over decrypted Payload
     byte payloadHashCalc[HASH_SIZE];
-    calcSHA256(payloadHashCalc, decryptedPayload, sizeof(decryptedPayload));
+    calcSHA256(payloadHashCalc, decryptedPayload, sizeof(decryptedPayload), currenSessionKey, SESSION_KEY_SIZE);
+
+    MsgType msgType = (MsgType)decryptedPayload[2];
+
+    bool sessionMsg = (msgType == MsgType_SESSION_NEW) ||
+                      (msgType == MsgType_SESSION_KEY) ||
+                      (msgType == MsgType_SESSION_KEY_ACK);
 
     // Check Hash
-    if (memcmp(payloadHash, payloadHashCalc, HASH_SIZE) != 0)
+    if (memcmp(payloadHash, payloadHashCalc, HASH_SIZE) != 0 && !sessionMsg)
     {
         Serial.println("Payload Hash does not equal calculated Hash!");
         Serial.println();
@@ -70,13 +105,18 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
     // Check Hash
     if (nonce <= lastReceivedNonce)
     {
-        Serial.println("Received unexpcted nonce");
-        Serial.println();
-        return;
+        if (!sessionMsg)
+        {
+            Serial.println("Received unexpcted nonce");
+            Serial.println();
+            return;
+        }
     }
-    lastReceivedNonce = nonce;
+    else
+    {
+        lastReceivedNonce = nonce;
+    }
 
-    MsgType msgType = (MsgType)decryptedPayload[2];
     uint8_t msgId = decryptedPayload[3];
     size_t msgLength = decryptedPayload[4];
 
@@ -86,24 +126,78 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
 
     switch (msgType)
     {
+    case MsgType_SESSION_NEW:
+    {
+        Serial.printf("Received SESSION_NEW message from: %d | msgId: %d\n\n", receivingDevice->id, msgId);
+
+        genSessionKey(lastSendSessionKey, SESSION_KEY_SIZE);
+
+        char *msgString = new char[SESSION_KEY_SIZE];
+        memcpy(msgString, lastSendSessionKey, SESSION_KEY_SIZE);
+
+        Message *message = new Message(MsgType_SESSION_KEY, 0, SESSION_KEY_SIZE, msgString);
+        messageQueue_FaF.addFirst(message);
+    }
+    break;
+    case MsgType_SESSION_KEY:
+    {
+        Serial.printf("Received SESSION_KEY message from: %d | msgId: %d\n\n", receivingDevice->id, msgId);
+
+        if (connectionStatus == ConnectionStatus::SessionRequestSended)
+        {
+            memcpy(currenSessionKey, data, SESSION_KEY_SIZE);
+            connectionStatus = ConnectionStatus::Connected;
+
+            char *msgString = new char[SESSION_KEY_SIZE];
+            memcpy(msgString, currenSessionKey, SESSION_KEY_SIZE);
+
+            Message *message = new Message(MsgType_SESSION_KEY_ACK, 0, SESSION_KEY_SIZE, msgString);
+            messageQueue_FaF.addFirst(message);
+
+            nextSendNonce = 1;
+            lastReceivedNonce = 0;
+            nextMsgId = 0;
+        }
+    }
+    break;
+    case MsgType_SESSION_KEY_ACK:
+    {
+        Serial.printf("Received SESSION_KEY_ACK message from: %d | msgId: %d\n\n", receivingDevice->id, msgId);
+
+        if (memcmp(data, lastSendSessionKey, SESSION_KEY_SIZE) == 0)
+        {
+            memcpy(currenSessionKey, lastSendSessionKey, SESSION_KEY_SIZE);
+            connectionStatus = ConnectionStatus::Connected;
+
+            nextSendNonce = 1;
+            lastReceivedNonce = 0;
+            nextMsgId = 0;
+        }
+    }
+    break;
     case MsgType_DAT:
+    {
         Serial.printf("Received DAT message from: %d | msgId: %d | Data: \"%s\"\n\n", receivingDevice->id, msgId, data);
         acknowledgeMessage(msgId);
         callback(receivingDevice, data);
-        break;
-
+    }
+    break;
     case MsgType_FAF:
+    {
         Serial.printf("Received FAF message from: %d | msgId: %d | Data: \"%s\"\n\n", receivingDevice->id, msgId, data);
         callback(receivingDevice, data);
-        break;
+    }
+    break;
 
     case MsgType_DAT_ACK:
+    {
         Serial.printf("Received DAT_ACK message from: %d | for msgId: %d\n\n", receivingDevice->id, msgId);
         if (messageQueue_Ack.getLast()->item->getMsgId() == msgId)
         {
             messageQueue_Ack.deleteLast();
         }
-        break;
+    }
+    break;
 
     default:
         break;
@@ -130,7 +224,7 @@ void Connection::sendPacket(Message *msg)
 
     // Hash payload
     byte payloadHash[HASH_SIZE];
-    calcSHA256(payloadHash, payload, paddedPayloadSize);
+    calcSHA256(payloadHash, payload, paddedPayloadSize, currenSessionKey, SESSION_KEY_SIZE);
 
     // Encrypt payload
     byte encryptedPayload[paddedPayloadSize];
@@ -149,6 +243,15 @@ void Connection::sendPacket(Message *msg)
 
     switch (msg->getMsgType())
     {
+    case MsgType_SESSION_NEW:
+        Serial.printf("Send SESSION_NEW message to: %d | msgId: %d\n\n", receivingDevice->id, msg->getMsgId());
+        break;
+    case MsgType_SESSION_KEY:
+        Serial.printf("Send SESSION_KEY message to: %d | msgId: %d\n\n", receivingDevice->id, msg->getMsgId());
+        break;
+    case MsgType_SESSION_KEY_ACK:
+        Serial.printf("Send SESSION_KEY_ACK message to: %d | msgId: %d\n\n", receivingDevice->id, msg->getMsgId());
+        break;
     case MsgType_DAT:
         Serial.printf("Send DAT message to: %d | msgId: %d | Data: \"%s\"\n\n", receivingDevice->id, msg->getMsgId(), msg->getMsg());
         break;
@@ -190,11 +293,20 @@ void Connection::acknowledgeMessage(uint8_t msgId)
     messageQueue_FaF.addFirst(message);
 }
 
-void Connection::calcSHA256(byte *hash, byte *data, size_t size)
+void Connection::genSessionKey(byte *data, size_t size)
+{
+    for (size_t i = 0; i < size; i++)
+    {
+        data[i] = random(256);
+    }
+}
+
+void Connection::calcSHA256(byte *hash, byte *data, size_t dataSize, byte *sessionKey, size_t sessionKeySize)
 {
     //Serial.print("Calc SHA256 (");
     sha256.reset();
-    sha256.update(data, size);
+    sha256.update(data, dataSize);
+    sha256.update(sessionKey, sessionKeySize);
     sha256.finalize(hash, HASH_SIZE);
 
     for (int i = 0; i < HASH_SIZE; i++)

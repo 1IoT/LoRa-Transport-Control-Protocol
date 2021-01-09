@@ -39,10 +39,10 @@ public:
         {
             LinkedListItem<T> *tempLinkedListItem = firstItem;
 
-            if (firstItem->before)
+            if (firstItem->next)
             {
-                firstItem = firstItem->before;
-                firstItem->next = nullptr;
+                firstItem = firstItem->next;
+                firstItem->before = nullptr;
             }
             else
             {
@@ -82,10 +82,10 @@ public:
         {
             LinkedListItem<T> *tempLinkedListItem = lastItem;
 
-            if (lastItem->next)
+            if (lastItem->before)
             {
-                lastItem = lastItem->next;
-                lastItem->before = nullptr;
+                lastItem = lastItem->before;
+                lastItem->next = nullptr;
             }
             else
             {
