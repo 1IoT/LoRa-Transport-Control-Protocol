@@ -9,9 +9,17 @@
 
 /* Connection TODO: comment */
 
+#define SESSION_KEY_SIZE 10
 #define HASH_SIZE 16
 #define AES_BLOCKSIZE 16
 #define MESSAGE_METADATA 5 // NONCE + MSG_TYPE + MSG_ID + MSG_LENGTH
+
+enum class ConnectionStatus
+{
+    NotConnected,
+    SessionRequestSended,
+    Connected
+};
 
 struct DeviceIdentity
 {
@@ -27,6 +35,8 @@ class Connection
 public:
     Connection(DeviceIdentity *ownDevice, DeviceIdentity *receivingDevice);
     ~Connection(){};
+
+    void checkSession();
 
     DeviceIdentity *getDeviceIdentity() { return receivingDevice; }
     bool addToAckMQ(char *data);
@@ -51,9 +61,12 @@ private:
     // For "fire and forget" messages
     LinkedList<Message> messageQueue_FaF;
 
+    ConnectionStatus connectionStatus = ConnectionStatus::NotConnected;
+    byte currenSessionKey[SESSION_KEY_SIZE];
+    byte lastSendSessionKey[SESSION_KEY_SIZE];
+
     uint16_t nextSendNonce = 1;
     uint16_t lastReceivedNonce = 0;
-
     uint8_t nextMsgId = 0;
 
     SHA256 sha256;
@@ -63,7 +76,8 @@ private:
 
     void acknowledgeMessage(uint8_t msgId);
 
-    void calcSHA256(byte *hash, byte *data, size_t size);
+    void genSessionKey(byte *data, size_t size);
+    void calcSHA256(byte *hash, byte *data, size_t dataSize, byte *sessionKey, size_t sessionKeySize);
     void encryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t size);
     void decryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t size);
 };

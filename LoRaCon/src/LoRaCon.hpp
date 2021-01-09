@@ -6,6 +6,7 @@
 #include "Connection.hpp"
 
 #define sendMsgTime 10000
+#define sessionCheckTime 120000
 #define msgRetryTime 20000
 
 typedef void (*functionPointer)(DeviceIdentity *from, char *msg);
@@ -40,7 +41,9 @@ private:
     LinkedList<Connection> connections;
     Connection *findConnection(uint8_t deviceId);
 
-    MyTimer timer;
+    MyTimer sessionCheckTimer;
+
+    MyTimer dutyCycleTimer;
     const LinkedListItem<Connection> *sendNext;
     void sendNextMessage();
 

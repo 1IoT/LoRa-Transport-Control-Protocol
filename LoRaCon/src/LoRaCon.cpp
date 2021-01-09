@@ -1,13 +1,16 @@
 #include "LoRaCon.hpp"
 
 LoRaCon::LoRaCon(DeviceIdentity *ownDevice, functionPointer callback)
-    : ownDevice(ownDevice), callback(callback), timer(sendMsgTime, sendMsgTime, true, true), sendNext(nullptr)
+    : ownDevice(ownDevice), callback(callback),
+      sessionCheckTimer(sessionCheckTime, 0, true, true),
+      dutyCycleTimer(sendMsgTime, sendMsgTime, true, true), sendNext(nullptr)
 {
 }
 
 void LoRaCon::addNewConnection(DeviceIdentity *receivingDevice)
 {
     connections.addLast(new Connection(ownDevice, receivingDevice));
+    connections.getLast()->item->checkSession();
     if (sendNext == nullptr)
     {
         sendNext = connections.getFirst();
@@ -57,7 +60,16 @@ bool LoRaCon::sendFAF(uint8_t receiverId, char *data)
 
 void LoRaCon::update()
 {
-    if (timer.checkTimer())
+    if (sessionCheckTimer.checkTimer())
+    {
+        const LinkedListItem<Connection> *tempItem = connections.getFirst();
+        while (tempItem)
+        {
+            tempItem->item->checkSession();
+            tempItem = tempItem->next;
+        }
+    }
+    if (dutyCycleTimer.checkTimer())
     {
         sendNextMessage();
     }
@@ -113,7 +125,7 @@ void LoRaCon::sendNextMessage()
 
         if (!msgSended)
         {
-            timer.startTimer(sendMsgTime, sendMsgTime - 100, true);
+            dutyCycleTimer.startTimer(sendMsgTime, sendMsgTime - 100, true);
         }
     }
 }
