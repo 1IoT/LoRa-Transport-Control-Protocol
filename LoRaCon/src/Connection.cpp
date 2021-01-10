@@ -4,6 +4,7 @@ Connection::Connection(DeviceIdentity *ownDevice, DeviceIdentity *receivingDevic
     : ownDevice(ownDevice), receivingDevice(receivingDevice)
 {
     randomSeed(analogRead(0));
+    genSessionKey(currentSessionKey, SESSION_KEY_SIZE);
 }
 
 void Connection::checkSession()
@@ -32,7 +33,7 @@ void Connection::checkSession()
     }
 }
 
-bool Connection::addToAckMQ(char *data)
+void Connection::addToAckMQ(char *data)
 {
     char *msgString = new char[strlen(data) + 1];
     memcpy(msgString, data, strlen(data) + 1);
@@ -43,7 +44,7 @@ bool Connection::addToAckMQ(char *data)
     messageQueue_Ack.addFirst(message);
 }
 
-bool Connection::addToFaFMQ(char *data)
+void Connection::addToFaFMQ(char *data)
 {
     char *msgString = new char[strlen(data) + 1];
     memcpy(msgString, data, strlen(data) + 1);
@@ -82,7 +83,7 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
 
     // Calculate Hash over decrypted Payload
     byte payloadHashCalc[HASH_SIZE];
-    calcSHA256(payloadHashCalc, decryptedPayload, sizeof(decryptedPayload), currenSessionKey, SESSION_KEY_SIZE);
+    calcSHA256(payloadHashCalc, decryptedPayload, sizeof(decryptedPayload), currentSessionKey, SESSION_KEY_SIZE);
 
     MsgType msgType = (MsgType)decryptedPayload[2];
 
@@ -95,6 +96,11 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
     {
         Serial.println("Payload Hash does not equal calculated Hash!");
         Serial.println();
+
+        if (connectionStatus != ConnectionStatus::Connected)
+        {
+            checkSession();
+        }
         return;
     }
 
@@ -145,11 +151,14 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
 
         if (connectionStatus == ConnectionStatus::SessionRequestSended)
         {
-            memcpy(currenSessionKey, data, SESSION_KEY_SIZE);
+            memcpy(currentSessionKey, data, SESSION_KEY_SIZE);
             connectionStatus = ConnectionStatus::Connected;
 
             char *msgString = new char[SESSION_KEY_SIZE];
-            memcpy(msgString, currenSessionKey, SESSION_KEY_SIZE);
+            memcpy(msgString, currentSessionKey, SESSION_KEY_SIZE);
+
+            // Clear MQ because in case of parallel session building a SESSSION_KEY message can still be in the MQ
+            messageQueue_FaF.clearList();
 
             Message *message = new Message(MsgType_SESSION_KEY_ACK, 0, SESSION_KEY_SIZE, msgString);
             messageQueue_FaF.addFirst(message);
@@ -166,12 +175,14 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
 
         if (memcmp(data, lastSendSessionKey, SESSION_KEY_SIZE) == 0)
         {
-            memcpy(currenSessionKey, lastSendSessionKey, SESSION_KEY_SIZE);
+            memcpy(currentSessionKey, lastSendSessionKey, SESSION_KEY_SIZE);
             connectionStatus = ConnectionStatus::Connected;
 
             nextSendNonce = 1;
             lastReceivedNonce = 0;
             nextMsgId = 0;
+
+            messageQueue_FaF.clearList();
         }
     }
     break;
@@ -224,7 +235,7 @@ void Connection::sendPacket(Message *msg)
 
     // Hash payload
     byte payloadHash[HASH_SIZE];
-    calcSHA256(payloadHash, payload, paddedPayloadSize, currenSessionKey, SESSION_KEY_SIZE);
+    calcSHA256(payloadHash, payload, paddedPayloadSize, currentSessionKey, SESSION_KEY_SIZE);
 
     // Encrypt payload
     byte encryptedPayload[paddedPayloadSize];
@@ -265,25 +276,6 @@ void Connection::sendPacket(Message *msg)
     default:
         break;
     }
-
-    // Serial.println("Message Send:");
-    // Serial.print("Sender: ");
-    // Serial.print(ownDevice->id);
-    // Serial.print(" | Receiver: ");
-    // Serial.println(receivingDevice->id);
-    // Serial.print("PayloadSize: ");
-    // Serial.print(payloadSize);
-    // Serial.print(" | PaddedPayloadSize: ");
-    // Serial.println(paddedPayloadSize);
-    // Serial.print("PacketSize: ");
-    // Serial.print(sizeof(packet));
-    // Serial.print(" | Packet: ");
-    // for (int i = 0; i < sizeof(packet); i++)
-    // {
-    //     Serial.printf("%02X ", packet[i]);
-    // }
-    // Serial.println();
-    // Serial.println();
 }
 
 void Connection::acknowledgeMessage(uint8_t msgId)

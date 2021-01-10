@@ -114,6 +114,14 @@ public:
         return length;
     }
 
+    void clearList()
+    {
+        while (firstItem)
+        {
+            deleteFirst();
+        }
+    }
+
 private:
     LinkedListItem<T> *firstItem = nullptr;
     LinkedListItem<T> *lastItem = nullptr;
