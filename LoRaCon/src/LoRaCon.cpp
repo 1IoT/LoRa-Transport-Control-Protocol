@@ -41,7 +41,8 @@ bool LoRaCon::sendDAT(uint8_t receiverId, char *data)
         return false;
     }
 
-    return receiverDevice->addToAckMQ(data);
+    receiverDevice->addToAckMQ(data);
+    return true;
 }
 
 bool LoRaCon::sendFAF(uint8_t receiverId, char *data)
@@ -55,7 +56,8 @@ bool LoRaCon::sendFAF(uint8_t receiverId, char *data)
         return false;
     }
 
-    return receiverDevice->addToFaFMQ(data);
+    receiverDevice->addToFaFMQ(data);
+    return true;
 }
 
 void LoRaCon::update()

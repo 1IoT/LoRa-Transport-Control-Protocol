@@ -39,8 +39,8 @@ public:
     void checkSession();
 
     DeviceIdentity *getDeviceIdentity() { return receivingDevice; }
-    bool addToAckMQ(char *data);
-    bool addToFaFMQ(char *data);
+    void addToAckMQ(char *data);
+    void addToFaFMQ(char *data);
 
     void sendFromAckMQ();
     void sendFromFaFMQ();
@@ -62,7 +62,7 @@ private:
     LinkedList<Message> messageQueue_FaF;
 
     ConnectionStatus connectionStatus = ConnectionStatus::NotConnected;
-    byte currenSessionKey[SESSION_KEY_SIZE];
+    byte currentSessionKey[SESSION_KEY_SIZE];
     byte lastSendSessionKey[SESSION_KEY_SIZE];
 
     uint16_t nextSendNonce = 1;

@@ -23,7 +23,7 @@
 #define LORA_LED 25
 
 #define DHT_PIN 13
-#define DHT_TYPE DHT22
+#define DHT_TYPE DHT11
 /* #endregion */
 
 /* #region Forward Declarations */
@@ -102,11 +102,9 @@ void setup()
   Serial.println("\n\n\n\n\n\n\n\n\n\n");
   /* #endregion */
 
-  loraCon = new LoRaCon(&sensorDevice1, &msgReceived);
+  loraCon = new LoRaCon(&sensorDevice2, &msgReceived);
   loraCon->addNewConnection(&gatewayDevice);
   loraCon->printConnections();
-
-  loraCon->sendFAF(100, "N:LOG:1:INFO: Sender device online!");
 }
 
 void loop()
