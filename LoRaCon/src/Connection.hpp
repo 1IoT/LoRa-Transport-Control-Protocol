@@ -6,13 +6,14 @@
 #include <LoRa.h>
 #include "Message.hpp"
 #include "LinkedList.hpp"
-
-/* Connection TODO: comment */
+#include "MyTimer.hpp"
 
 #define SESSION_KEY_SIZE 10
 #define HASH_SIZE 16
 #define AES_BLOCKSIZE 16
 #define MESSAGE_METADATA 5 // NONCE + MSG_TYPE + MSG_ID + MSG_LENGTH
+#define MAX_MESSAGES_IN_MQ 50
+#define RETRY_TIME_ACK 30000
 
 enum class ConnectionStatus
 {
@@ -42,8 +43,9 @@ public:
     void addToAckMQ(char *data);
     void addToFaFMQ(char *data);
 
-    void sendFromAckMQ();
-    void sendFromFaFMQ();
+    bool ackReadyToSend();
+    size_t sendFromAckMQ();
+    size_t sendFromFaFMQ();
 
     void receivePacket(byte *packet, int packetSize, functionPointer callback);
 
@@ -72,10 +74,11 @@ private:
     SHA256 sha256;
     AES128 aes128;
 
-    void sendPacket(Message *msg);
+    MyTimer retrySendingAckTimer;
+
+    size_t sendPacket(Message *msg);
 
     void acknowledgeMessage(uint8_t msgId);
-
     void genSessionKey(byte *data, size_t size);
     void calcSHA256(byte *hash, byte *data, size_t dataSize, byte *sessionKey, size_t sessionKeySize);
     void encryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t size);
