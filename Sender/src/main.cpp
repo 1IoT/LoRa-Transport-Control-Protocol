@@ -95,7 +95,7 @@ void setup()
   // Read DHT every 2 seconds
   dhtReadTimer = new MyTimer(5000, 5000, true, true);
   // Send LoRa
-  sendLoRaTimer = new MyTimer(20000, 0, true, true);
+  sendLoRaTimer = new MyTimer(30000, 20000, true, true);
   // Display send only 5 seconds
   displaySendTimer = new MyTimer(5000, 0, false, false);
 

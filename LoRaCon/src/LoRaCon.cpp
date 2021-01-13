@@ -2,8 +2,8 @@
 
 LoRaCon::LoRaCon(DeviceIdentity *ownDevice, functionPointer callback)
     : ownDevice(ownDevice), callback(callback),
-      sessionCheckTimer(sessionCheckTime, 0, true, true),
-      dutyCycleTimer(sendMsgTime, sendMsgTime, true, true), sendNext(nullptr)
+      sessionCheckTimer(SESSION_CHECK_TIME, 0, true, true),
+      dutyCycleTimer(UPDATE_REMAINING_AIRTIME, 0, true, true), sendNext(nullptr)
 {
 }
 
@@ -71,10 +71,24 @@ void LoRaCon::update()
             tempItem = tempItem->next;
         }
     }
+
     if (dutyCycleTimer.checkTimer())
+    {
+        if (usedAirtime > 600)
+        {
+            usedAirtime -= 600;
+        }
+        else
+        {
+            usedAirtime = 0;
+        }
+    }
+
+    if (usedAirtime < MAX_AIRTIME_PER_HOUR)
     {
         sendNextMessage();
     }
+
     receiveMessage();
 }
 
@@ -106,13 +120,23 @@ void LoRaCon::sendNextMessage()
         {
             if (sendNext->item->getLengthMessageQueue_FaF() > 0)
             {
-                sendNext->item->sendFromFaFMQ();
+                size_t packezSize = sendNext->item->sendFromFaFMQ();
                 msgSended = true;
+                usedAirtime += calculateAirtime(packezSize);
+                //Serial.println(usedAirtime);
             }
-            else if (sendNext->item->getLengthMessageQueue_Ack() > 0)
+            else if (sendNext->item->getLengthMessageQueue_Ack() > 0 && sendNext->item->ackReadyToSend())
             {
-                sendNext->item->sendFromAckMQ();
+                size_t packezSize = sendNext->item->sendFromAckMQ();
+
                 msgSended = true;
+                uint16_t x = calculateAirtime(packezSize);
+                usedAirtime += x;
+                /*
+                Serial.print("Airtime: ");
+                Serial.println(x);
+                Serial.println(usedAirtime);
+                */
             }
 
             if (sendNext->next == nullptr)
@@ -123,16 +147,13 @@ void LoRaCon::sendNextMessage()
             {
                 sendNext = sendNext->next;
             }
-        } while (sendNext != startItem && !msgSended);
 
-        if (!msgSended)
-        {
-            dutyCycleTimer.startTimer(sendMsgTime, sendMsgTime - 100, true);
-        }
+        } while (sendNext != startItem && !msgSended);
     }
 }
 
 void LoRaCon::receiveMessage()
+
 {
     int packetSize = LoRa.parsePacket();
 
@@ -167,4 +188,10 @@ void LoRaCon::receiveMessage()
 
         senderDevice->receivePacket(packet, packetSize, callback);
     }
+}
+
+uint16_t LoRaCon::calculateAirtime(uint16_t sizeInBytes)
+{
+    double airtimeInMilliseconds = ((sizeInBytes * 8.0) / BitrateSF7_125kHz * 1000.0) + 1.0;
+    return (uint16_t)airtimeInMilliseconds;
 }

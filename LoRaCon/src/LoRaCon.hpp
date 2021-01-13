@@ -5,9 +5,10 @@
 #include "Message.hpp"
 #include "Connection.hpp"
 
-#define sendMsgTime 10000
-#define sessionCheckTime 120000
-#define msgRetryTime 20000
+#define UPDATE_REMAINING_AIRTIME 60000
+#define SESSION_CHECK_TIME 120000
+#define BitrateSF7_125kHz 5470.0
+#define MAX_AIRTIME_PER_HOUR 35000
 
 typedef void (*functionPointer)(DeviceIdentity *from, char *msg);
 
@@ -42,10 +43,14 @@ private:
     Connection *findConnection(uint8_t deviceId);
 
     MyTimer sessionCheckTimer;
-
     MyTimer dutyCycleTimer;
-    const LinkedListItem<Connection> *sendNext;
-    void sendNextMessage();
 
+    const LinkedListItem<Connection> *sendNext;
+
+    uint16_t usedAirtime = 0;
+
+    void sendNextMessage();
     void receiveMessage();
+
+    uint16_t calculateAirtime(uint16_t sizeInBytes);
 };

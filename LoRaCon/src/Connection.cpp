@@ -1,7 +1,8 @@
 #include "Connection.hpp"
 
 Connection::Connection(DeviceIdentity *ownDevice, DeviceIdentity *receivingDevice)
-    : ownDevice(ownDevice), receivingDevice(receivingDevice)
+    : ownDevice(ownDevice), receivingDevice(receivingDevice),
+      retrySendingAckTimer(RETRY_TIME_ACK, RETRY_TIME_ACK, true, false)
 {
     randomSeed(analogRead(0));
     genSessionKey(currentSessionKey, SESSION_KEY_SIZE);
@@ -41,6 +42,11 @@ void Connection::addToAckMQ(char *data)
     Message *message = new Message(MsgType_DAT, nextMsgId, strlen(msgString), msgString);
     nextMsgId++;
 
+    if (messageQueue_Ack.getLength() >= MAX_MESSAGES_IN_MQ)
+    {
+        messageQueue_Ack.deleteLast();
+    }
+
     messageQueue_Ack.addFirst(message);
 }
 
@@ -52,18 +58,38 @@ void Connection::addToFaFMQ(char *data)
     Message *message = new Message(MsgType_FAF, nextMsgId, strlen(msgString), msgString);
     nextMsgId++;
 
+    if (messageQueue_FaF.getLength() >= MAX_MESSAGES_IN_MQ)
+    {
+        messageQueue_FaF.deleteLast();
+    }
+
     messageQueue_FaF.addFirst(message);
 }
 
-void Connection::sendFromAckMQ()
+bool Connection::ackReadyToSend()
 {
-    sendPacket(messageQueue_Ack.getLast()->item);
+    if (retrySendingAckTimer.checkTimer())
+    {
+        retrySendingAckTimer.startTimer(RETRY_TIME_ACK, 0, false);
+        return true;
+    }
+    else
+    {
+        return false;
+    }
 }
 
-void Connection::sendFromFaFMQ()
+size_t Connection::sendFromAckMQ()
 {
-    sendPacket(messageQueue_FaF.getLast()->item);
+    size_t packetSize = sendPacket(messageQueue_Ack.getLast()->item);
+    return packetSize;
+}
+
+size_t Connection::sendFromFaFMQ()
+{
+    size_t packetSize = sendPacket(messageQueue_FaF.getLast()->item);
     messageQueue_FaF.deleteLast();
+    return packetSize;
 }
 
 void Connection::receivePacket(byte *packet, int packetSize, functionPointer callback)
@@ -206,6 +232,7 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
         if (messageQueue_Ack.getLast()->item->getMsgId() == msgId)
         {
             messageQueue_Ack.deleteLast();
+            retrySendingAckTimer.startTimer(RETRY_TIME_ACK, RETRY_TIME_ACK, false);
         }
     }
     break;
@@ -215,7 +242,7 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
     }
 }
 
-void Connection::sendPacket(Message *msg)
+size_t Connection::sendPacket(Message *msg)
 {
     // Create payload
     size_t payloadSize = msg->getMsgLength() + MESSAGE_METADATA;
@@ -276,6 +303,8 @@ void Connection::sendPacket(Message *msg)
     default:
         break;
     }
+
+    return sizeof(packet);
 }
 
 void Connection::acknowledgeMessage(uint8_t msgId)
