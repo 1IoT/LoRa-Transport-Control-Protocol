@@ -10,13 +10,13 @@
 #define BitrateSF7_125kHz 5470.0
 #define MAX_AIRTIME_PER_HOUR 35000
 
-typedef void (*functionPointer)(DeviceIdentity *from, char *msg);
+typedef void (*FunctionPointer)(DeviceIdentity *from, char *msg);
 
 class LoRaCon
 {
 
 public:
-    LoRaCon(DeviceIdentity *device, functionPointer callback);
+    LoRaCon(DeviceIdentity *ownDevice, FunctionPointer messageReceivedCallback);
 
     void addNewConnection(DeviceIdentity *device);
     void printConnections();
@@ -26,18 +26,11 @@ public:
 
     void update();
 
-    /*
-    bool sendData(uint8_t receiverId, char *data);
-    void printPendingMessage();
-
-    void receiving();
-    */
-
 private:
     // Own identity
     DeviceIdentity *ownDevice;
 
-    functionPointer callback;
+    FunctionPointer messageReceivedCallback;
 
     LinkedList<Connection> connections;
     Connection *findConnection(uint8_t deviceId);
@@ -51,6 +44,5 @@ private:
 
     void sendNextMessage();
     void receiveMessage();
-
     uint16_t calculateAirtime(uint16_t sizeInBytes);
 };

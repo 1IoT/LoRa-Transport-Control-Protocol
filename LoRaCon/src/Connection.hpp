@@ -29,7 +29,7 @@ struct DeviceIdentity
     byte key[32];
 };
 
-typedef void (*functionPointer)(DeviceIdentity *from, char *msg);
+typedef void (*FunctionPointer)(DeviceIdentity *from, char *msg);
 
 class Connection
 {
@@ -47,7 +47,7 @@ public:
     size_t sendFromAckMQ();
     size_t sendFromFaFMQ();
 
-    void receivePacket(byte *packet, int packetSize, functionPointer callback);
+    void receivePacket(byte *packet, int packetSize, FunctionPointer messageReceivedCallback);
 
     int getLengthMessageQueue_Ack() { return messageQueue_Ack.getLength(); }
     int getLengthMessageQueue_FaF() { return messageQueue_FaF.getLength(); }
@@ -58,12 +58,17 @@ private:
     // Identity of receiving device
     DeviceIdentity *receivingDevice;
 
-    // For messages to be acknowledged
+    // For messages that need to be acknowledged
     LinkedList<Message> messageQueue_Ack;
     // For "fire and forget" messages
     LinkedList<Message> messageQueue_FaF;
 
     ConnectionStatus connectionStatus = ConnectionStatus::NotConnected;
+
+    SHA256 sha256;
+    AES128 aes128;
+    MyTimer retrySendingAckTimer;
+
     byte currentSessionKey[SESSION_KEY_SIZE];
     byte lastSendSessionKey[SESSION_KEY_SIZE];
 
@@ -71,16 +76,11 @@ private:
     uint16_t lastReceivedNonce = 0;
     uint8_t nextMsgId = 0;
 
-    SHA256 sha256;
-    AES128 aes128;
-
-    MyTimer retrySendingAckTimer;
-
     size_t sendPacket(Message *msg);
 
     void acknowledgeMessage(uint8_t msgId);
-    void genSessionKey(byte *data, size_t size);
-    void calcSHA256(byte *hash, byte *data, size_t dataSize, byte *sessionKey, size_t sessionKeySize);
+    void generateSessionKey(byte *data, size_t size);
+    void calculateSHA256(byte *hash, byte *data, size_t dataSize, byte *sessionKey, size_t sessionKeySize);
     void encryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t size);
     void decryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t size);
 };

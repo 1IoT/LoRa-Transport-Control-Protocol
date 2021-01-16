@@ -4,8 +4,7 @@ Connection::Connection(DeviceIdentity *ownDevice, DeviceIdentity *receivingDevic
     : ownDevice(ownDevice), receivingDevice(receivingDevice),
       retrySendingAckTimer(RETRY_TIME_ACK, RETRY_TIME_ACK, true, false)
 {
-    randomSeed(analogRead(0));
-    genSessionKey(currentSessionKey, SESSION_KEY_SIZE);
+    generateSessionKey(currentSessionKey, SESSION_KEY_SIZE);
 }
 
 void Connection::checkSession()
@@ -92,7 +91,7 @@ size_t Connection::sendFromFaFMQ()
     return packetSize;
 }
 
-void Connection::receivePacket(byte *packet, int packetSize, functionPointer callback)
+void Connection::receivePacket(byte *packet, int packetSize, FunctionPointer messageReceivedCallback)
 {
     // Read Hash
     byte payloadHash[HASH_SIZE];
@@ -109,7 +108,7 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
 
     // Calculate Hash over decrypted Payload
     byte payloadHashCalc[HASH_SIZE];
-    calcSHA256(payloadHashCalc, decryptedPayload, sizeof(decryptedPayload), currentSessionKey, SESSION_KEY_SIZE);
+    calculateSHA256(payloadHashCalc, decryptedPayload, sizeof(decryptedPayload), currentSessionKey, SESSION_KEY_SIZE);
 
     MsgType msgType = (MsgType)decryptedPayload[2];
 
@@ -156,13 +155,14 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
     memcpy(data, decryptedPayload + MESSAGE_METADATA, msgLength);
     data[msgLength] = '\0';
 
+    // Handle received message according to Message Type
     switch (msgType)
     {
     case MsgType_SESSION_NEW:
     {
         Serial.printf("Received SESSION_NEW message from: %d | msgId: %d\n\n", receivingDevice->id, msgId);
 
-        genSessionKey(lastSendSessionKey, SESSION_KEY_SIZE);
+        generateSessionKey(lastSendSessionKey, SESSION_KEY_SIZE);
 
         char *msgString = new char[SESSION_KEY_SIZE];
         memcpy(msgString, lastSendSessionKey, SESSION_KEY_SIZE);
@@ -216,13 +216,13 @@ void Connection::receivePacket(byte *packet, int packetSize, functionPointer cal
     {
         Serial.printf("Received DAT message from: %d | msgId: %d | Data: \"%s\"\n\n", receivingDevice->id, msgId, data);
         acknowledgeMessage(msgId);
-        callback(receivingDevice, data);
+        messageReceivedCallback(receivingDevice, data);
     }
     break;
     case MsgType_FAF:
     {
         Serial.printf("Received FAF message from: %d | msgId: %d | Data: \"%s\"\n\n", receivingDevice->id, msgId, data);
-        callback(receivingDevice, data);
+        messageReceivedCallback(receivingDevice, data);
     }
     break;
 
@@ -262,7 +262,7 @@ size_t Connection::sendPacket(Message *msg)
 
     // Hash payload
     byte payloadHash[HASH_SIZE];
-    calcSHA256(payloadHash, payload, paddedPayloadSize, currentSessionKey, SESSION_KEY_SIZE);
+    calculateSHA256(payloadHash, payload, paddedPayloadSize, currentSessionKey, SESSION_KEY_SIZE);
 
     // Encrypt payload
     byte encryptedPayload[paddedPayloadSize];
@@ -314,7 +314,7 @@ void Connection::acknowledgeMessage(uint8_t msgId)
     messageQueue_FaF.addFirst(message);
 }
 
-void Connection::genSessionKey(byte *data, size_t size)
+void Connection::generateSessionKey(byte *data, size_t size)
 {
     for (size_t i = 0; i < size; i++)
     {
@@ -322,24 +322,16 @@ void Connection::genSessionKey(byte *data, size_t size)
     }
 }
 
-void Connection::calcSHA256(byte *hash, byte *data, size_t dataSize, byte *sessionKey, size_t sessionKeySize)
+void Connection::calculateSHA256(byte *hash, byte *data, size_t dataSize, byte *sessionKey, size_t sessionKeySize)
 {
-    //Serial.print("Calc SHA256 (");
     sha256.reset();
     sha256.update(data, dataSize);
     sha256.update(sessionKey, sessionKeySize);
     sha256.finalize(hash, HASH_SIZE);
-
-    for (int i = 0; i < HASH_SIZE; i++)
-    {
-        //Serial.printf("%02X ", hash[i]);
-    }
-    //Serial.println(")");
 }
 
 void Connection::encryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t size)
 {
-    //Serial.println("Encrypt AES128");
     uint8_t blocks = size / aes128.keySize();
     crypto_feed_watchdog();
     aes128.setKey(key, aes128.keySize());
@@ -351,7 +343,6 @@ void Connection::encryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t si
 
 void Connection::decryptAES128(byte *key, byte *dataIn, byte *dataOut, size_t size)
 {
-    //Serial.println("Decrypt AES128");
     uint8_t blocks = size / aes128.keySize();
     crypto_feed_watchdog();
     aes128.setKey(key, aes128.keySize());
