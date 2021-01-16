@@ -180,7 +180,9 @@ size_t getDigitCount(char *msgItem, size_t msgItemLength)
 
 void sendMessageToGateway(char *gatewayMessage)
 {
+  Serial.print("Send to gateway: ");
   Serial.println(gatewayMessage);
+  //Serial2.println();
 }
 
 void processMessageItem(DeviceIdentity *deviceIdentity, char *msgItem, size_t msgItemLength)
