@@ -25,7 +25,7 @@ void LoRaCon::printConnections()
     while (tempItem)
     {
         Serial.print("Device Id: ");
-        Serial.println(tempItem->item->getDeviceIdentity()->id);
+        Serial.println(tempItem->item->getReceivingDeviceIdentity()->id);
         tempItem = tempItem->next;
     }
     Serial.println();
@@ -98,7 +98,7 @@ Connection *LoRaCon::findConnection(uint8_t deviceId)
 {
     const LinkedListItem<Connection> *tempItem = connections.getFirst();
 
-    while (tempItem && tempItem->item->getDeviceIdentity()->id != deviceId)
+    while (tempItem && tempItem->item->getReceivingDeviceIdentity()->id != deviceId)
     {
         tempItem = tempItem->next;
     }

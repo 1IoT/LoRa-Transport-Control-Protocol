@@ -39,7 +39,7 @@ public:
 
     void checkSession();
 
-    DeviceIdentity *getDeviceIdentity() { return receivingDevice; }
+    DeviceIdentity *getReceivingDeviceIdentity() { return receivingDevice; }
     void addToAckMQ(char *data);
     void addToFaFMQ(char *data);
 
