@@ -1,10 +1,11 @@
 #include "LoRaCon.hpp"
 
-LoRaCon::LoRaCon(DeviceIdentity *ownDevice, functionPointer callback)
-    : ownDevice(ownDevice), callback(callback),
+LoRaCon::LoRaCon(DeviceIdentity *ownDevice, FunctionPointer callback)
+    : ownDevice(ownDevice), messageReceivedCallback(callback),
       sessionCheckTimer(SESSION_CHECK_TIME, 0, true, true),
       dutyCycleTimer(UPDATE_REMAINING_AIRTIME, 0, true, true), sendNext(nullptr)
 {
+    randomSeed(analogRead(0));
 }
 
 void LoRaCon::addNewConnection(DeviceIdentity *receivingDevice)
@@ -72,6 +73,7 @@ void LoRaCon::update()
         }
     }
 
+    // Update remaining airtime every minute
     if (dutyCycleTimer.checkTimer())
     {
         if (usedAirtime > 600)
@@ -123,7 +125,6 @@ void LoRaCon::sendNextMessage()
                 size_t packezSize = sendNext->item->sendFromFaFMQ();
                 msgSended = true;
                 usedAirtime += calculateAirtime(packezSize);
-                //Serial.println(usedAirtime);
             }
             else if (sendNext->item->getLengthMessageQueue_Ack() > 0 && sendNext->item->ackReadyToSend())
             {
@@ -132,11 +133,6 @@ void LoRaCon::sendNextMessage()
                 msgSended = true;
                 uint16_t x = calculateAirtime(packezSize);
                 usedAirtime += x;
-                /*
-                Serial.print("Airtime: ");
-                Serial.println(x);
-                Serial.println(usedAirtime);
-                */
             }
 
             if (sendNext->next == nullptr)
@@ -186,7 +182,7 @@ void LoRaCon::receiveMessage()
             return;
         }
 
-        senderDevice->receivePacket(packet, packetSize, callback);
+        senderDevice->receivePacket(packet, packetSize, messageReceivedCallback);
     }
 }
 

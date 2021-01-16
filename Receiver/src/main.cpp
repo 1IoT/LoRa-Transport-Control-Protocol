@@ -104,10 +104,6 @@ void setup()
   deviceMappingTable.addFirst(new DeviceMappingEntry(12, 1, 5));
   deviceMappingTable.addFirst(new DeviceMappingEntry(12, 2, 6));
 
-  //msgReceived(&sensorDevice1, "S:1:20:DOUBLE:22.2|S:2:20:DOUBLE:33.3");
-  //msgReceived(&sensorDevice2, "S:1:20:DOUBLE:22.2");
-  //msgReceived(&sensorDevice3, "S:1:20:DOUBLE:22.2|S:2:20:DOUBLE:33.3|S:3:20:DOUBLE:33.3");
-
   loraCon = new LoRaCon(&gatewayDevice, &msgReceived);
   loraCon->addNewConnection(&sensorDevice1);
   loraCon->addNewConnection(&sensorDevice2);
@@ -136,6 +132,7 @@ uint16_t findReplacementId(DeviceIdentity *deviceIdentity, int index)
 
 void splitMessage(DeviceIdentity *deviceIdentity, char *msg)
 {
+  // Split message after every '|' and start processing each part
   size_t msgLength = strlen(msg);
   size_t startIndex = 0;
   size_t endIndex = 0;
@@ -158,8 +155,6 @@ void splitMessage(DeviceIdentity *deviceIdentity, char *msg)
       memcpy(msgItem, msg + startIndex, msgItemLength);
       msgItem[msgItemLength] = '\0';
       startIndex = endIndex + 1;
-      //Serial.print("Message Item: ");
-      //Serial.println(msgItem);
       processMessageItem(deviceIdentity, msgItem, msgItemLength);
     }
   }
@@ -167,6 +162,7 @@ void splitMessage(DeviceIdentity *deviceIdentity, char *msg)
 
 size_t getDigitCount(char *msgItem, size_t msgItemLength)
 {
+  // Get count of digits between the first two ':' of the message
   size_t indexLength = 1;
   for (size_t i = 3; i < msgItemLength; i++)
   {
@@ -184,8 +180,9 @@ size_t getDigitCount(char *msgItem, size_t msgItemLength)
 
 void sendMessageToGateway(char *gatewayMessage)
 {
+  Serial.print("Send to gateway: ");
   Serial.println(gatewayMessage);
-  //Serial2.println(gatewayMessage);
+  //Serial2.println();
 }
 
 void processMessageItem(DeviceIdentity *deviceIdentity, char *msgItem, size_t msgItemLength)
